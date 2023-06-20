@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import time
 import formatting as f
 
 
@@ -18,7 +17,6 @@ class BookDB:
         self.__load()
 
     def __load(self):
-        start = time.time()
         print("Loading data...")
         rating = pd.read_csv(self.__ratings_path, sep=';', on_bad_lines='skip', encoding="Latin-1")
         rating.columns = ['userID', 'ISBN', 'bookRating']
@@ -51,43 +49,7 @@ class BookDB:
         books_table.columns = ['ISBN', 'Title', 'Author', 'Year', 'Publisher', 'Image']
         self.__books_table_ratings = books_table.merge(popularity, left_on='ISBN', right_on='ISBN')
         self.__selected = None
-        print("Loaded")
-        end = time.time()
-        print(end - start)
-
-    def recommend(self, book_id=''):
-        start = time.time()
-        if not book_id:
-            if self.__selected is None:
-                raise RuntimeError("No book selected\n")
-            else:
-                book_id = self.__selected['ISBN']
-
-        if book_id in self.__transposed_table.index:
-            selected_book = self.__transposed_table.loc[book_id]
-            local_transposed_table = self.__transposed_table.drop(index=book_id)
-
-        elif book_id in self.__rating_rest['ISBN'].values:
-            book_ratings = self.__rating_rest[self.__rating_rest['ISBN'] == book_id]
-            book_transposed = book_ratings.pivot(index='ISBN', columns='userID', values='bookRating')
-            book_transposed = book_transposed.reindex(columns=self.__transposed_table.columns.values).fillna(0)
-            selected_book = book_transposed.iloc[0]
-            local_transposed_table = self.__transposed_table
-
-        else:
-            raise RuntimeError("ISBN not valid")
-
-        distances = np.linalg.norm(local_transposed_table - selected_book, axis=1)
-        nearest_neighbor_ids = distances.argsort()[:self.__k]
-
-        result = []
-        for i in range(0, self.__k):
-            result.append(local_transposed_table.index[nearest_neighbor_ids[i]])
-
-        result = self.__info(result)
-        print(f"{f.title('Recommendations:')}\n{result}")
-        end = time.time()
-        print(end - start)
+        print("Loaded\n")
 
     def __info(self, books):
         if not books:
@@ -127,14 +89,42 @@ class BookDB:
     def reload(self):
         self.__load()
 
+    def recommend(self, book_id=''):
+        if not book_id:
+            if self.__selected is None:
+                raise RuntimeError("No book selected\n")
+            else:
+                book_id = self.__selected['ISBN']
+
+        if book_id in self.__transposed_table.index:
+            selected_book = self.__transposed_table.loc[book_id]
+            local_transposed_table = self.__transposed_table.drop(index=book_id)
+
+        elif book_id in self.__rating_rest['ISBN'].values:
+            book_ratings = self.__rating_rest[self.__rating_rest['ISBN'] == book_id]
+            book_transposed = book_ratings.pivot(index='ISBN', columns='userID', values='bookRating')
+            book_transposed = book_transposed.reindex(columns=self.__transposed_table.columns.values).fillna(0)
+            selected_book = book_transposed.iloc[0]
+            local_transposed_table = self.__transposed_table
+
+        else:
+            raise RuntimeError("ISBN not valid")
+
+        distances = np.linalg.norm(local_transposed_table - selected_book, axis=1)
+        nearest_neighbor_ids = distances.argsort()[:self.__k]
+
+        result = []
+        for i in range(0, self.__k):
+            result.append(local_transposed_table.index[nearest_neighbor_ids[i]])
+
+        result = self.__info(result)
+        print(f"{f.title('Recommendations:')}\n{result}")
+
     def select(self, query):
-        start = time.time()
         results_table_id = self.__books_table_ratings.loc[self.__books_table_ratings['ISBN'].values == query]
         if not results_table_id.empty:
             self.__selected = results_table_id.iloc[0]
             self.selected()
-            end = time.time()
-            print(end - start)
             return
 
         results_table = self.__books_table_ratings.loc[
@@ -142,17 +132,13 @@ class BookDB:
             self.__books_table_ratings['Author'].str.contains(query, case=False)]
         results_table = results_table.sort_values(by=['Popularity'], ascending=False).reset_index(drop=True)
         if results_table.empty:
-            end = time.time()
-            print(end - start)
             raise RuntimeError('No results found\n')
 
         current_page = 0
         self.__results_page(results_table, current_page)
         print("Type the index of the book you want to select\n"
               "Type 'previous' and 'next' to navigate results\n"
-              "Type 'cancel' to exit")
-        end = time.time()
-        print(end - start)
+              "Type 'cancel' to exit\n")
 
         while True:
             # print(page)
@@ -192,7 +178,13 @@ class BookDB:
         if self.__selected is None:
             print("[Nothing selected]\n")
         else:
-            print(f"{f.title('Selected book:')}\n{self.__selected}\n")
+            print(f"{f.title('Selected book:')}\n"
+                  f"Title: {self.__selected['Title']}\n"
+                  f"Author: {self.__selected['Author']}\n"
+                  f"ISBN: {self.__selected['ISBN']}\n"
+                  f"Year: {self.__selected['Year']}\n"
+                  f"Publisher: {self.__selected['Publisher']}\n"
+                  f"Image: {self.__selected['Image']}\n")
 
     def clear(self):
         self.__selected = None
